@@ -47,12 +47,9 @@ DATA = next(p for p in HERE.parents if (p / "ctu-hub-ctgdb").exists()) / "ctu-hu
 LOG = HERE / "log"
 LOG.mkdir(exist_ok=True)
 
-# 크롭 창의 잔여 결측 상한 [재구현 선택 — write_summary의 설명 참조]
-MAX_CROP_MISSING = 1 / 3
-MAX_CROP_MISSING_TXT = "1/3"   # 표시용 — 33%로 반올림하면 경계가 흐려진다
-
-# 논문이 보고한 대조 수치 (Chiou et al., 2025)
-PAPER = {"n_total": 552, "n_cropped": 496,
+# 논문이 보고한 대조 수치 (Chiou et al., 2025). 논문 전처리 절의 (n = 496)·(n = 56)은
+# 분석 제외가 아니라 90%/10% 학습·테스트 **분할**이다 — write_summary의 설명 참조.
+PAPER = {"n_total": 552,
          "ph_abnormal": 177, "apgar_abnormal": 68, "lor_abnormal": 198}
 
 
@@ -81,11 +78,10 @@ def process_record(rid: str) -> tuple[dict, np.ndarray | None]:
     x = make_model_input(fhr_p, uc_p)
     row["crop_ok"] = x is not None
 
-    # 크롭 창에 남은 결측(>15초 구간은 0으로 유지되므로 그대로 셀 수 있다).
-    # 평활 전 신호에서 재므로 평활 창 선택에 영향받지 않는다.
+    # 크롭 창에 남은 결측(>15초 구간은 0으로 유지되므로 그대로 셀 수 있다) —
+    # 신호 품질 기술 통계. 평활 전 신호에서 재므로 평활 창 선택에 영향받지 않는다.
     crop = crop_last_minutes(impute_short_gaps(fhr_t, int(LONG_GAP_S * FS)), fs=FS)
     row["crop_missing_frac"] = float((crop == 0).mean()) if crop is not None else 1.0
-    row["crop_usable"] = row["crop_ok"] and row["crop_missing_frac"] <= MAX_CROP_MISSING
 
     # (B) 규칙 기반 특성 파이프라인
     fhr_f, uc_f = preprocess_for_features(fhr_t, uc_t)
@@ -98,12 +94,11 @@ def process_record(rid: str) -> tuple[dict, np.ndarray | None]:
 
 
 def write_summary(df: pd.DataFrame, labels: dict, dt: float, n_inputs: int) -> str:
-    got = {"n_total": len(df), "n_cropped": int(df["crop_usable"].sum()),
+    got = {"n_total": len(df),
            "ph_abnormal": int(labels["ph"].sum()),
            "apgar_abnormal": int(labels["apgar"].sum()),
            "lor_abnormal": int(labels["lor"].sum())}
     names = {"n_total": "전체 레코드",
-             "n_cropped": f"분석 대상 (크롭 창 결측 ≤ {MAX_CROP_MISSING_TXT})",
              "ph_abnormal": "pH < 7.20 (비정상)", "apgar_abnormal": "1분 Apgar < 7 (비정상)",
              "lor_abnormal": "pH 또는 Apgar 이상 (LOR)"}
 
@@ -129,15 +124,18 @@ def write_summary(df: pd.DataFrame, labels: dict, dt: float, n_inputs: int) -> s
         "세 라벨(Eq. 1)의 비정상 건수는 논문과 정확히 일치한다 — 헤더의 pH·Apgar1을 그대로 "
         "쓰므로 재구현 여지가 없는 부분이고, 그래서 데이터 로딩이 옳다는 확인이 된다.",
         "",
-        f"**분석 대상 496건의 재구성.** 이 데이터셋의 원신호는 전부 60분 이상이라 "
-        f"{CROP_MIN}분 크롭 자체는 552건 모두 가능하다"
-        f"(양끝 결측 제거 후 최단 {df['trimmed_min'].min():.0f}분). 논문이 보고한 496건은 "
-        "따라서 길이가 아닌 **신호 품질** 기준의 결과인데, 그 기준은 본문에 없다. "
-        f"크롭 창의 잔여 결측(>{LONG_GAP_S}초 구간)이 **{MAX_CROP_MISSING_TXT} 이하**인 "
-        f"레코드만 남기면 정확히 {got['n_cropped']}건이 된다. 평활 전/후 어느 신호에서 재도 "
-        "같은 수가 나오므로 평활 창 선택([재구현 선택])에는 영향받지 않는다. "
-        "논문이 밝히지 않은 기준을 역산한 **가설**이며, 확증이 아니다 — "
-        "`log/ctu_features17.csv`의 `crop_missing_frac` 열로 다른 임계값도 재현할 수 있다.",
+        "**논문의 (n = 496)·(n = 56)에 대하여.** 논문 전처리 절의 "
+        "\"4,315,200 minutes (n = 496 recordings), 148,800 min (n = 496 recordings), and "
+        "1,680 min (n = 56 recordings) ... for pre-training, training, and testing, "
+        "respectively\"는 분석에서 제외된 레코드가 있다는 뜻이 아니라 **90%/10% "
+        "학습·테스트 분할**이다. Data splitting 절이 이를 명시한다 — 레코드 식별자의 10%를 "
+        "테스트로 고정하고 나머지 90%를 10-fold 교차검증에 썼다. 산술도 맞물린다: "
+        "496 + 56 = 552(제외 없음), 148,800분 ÷ 30분 = 4,960 = 496건 × 증강 크롭 10개"
+        "(Appendix A.1), 1,680분 ÷ 30분 = 56 = 테스트 56건 × 결정론적 크롭 1개. "
+        f"실제로 이 데이터셋의 원신호는 전부 60분 이상이라 {CROP_MIN}분 크롭은 552건 모두 "
+        f"가능하고(양끝 결측 제거 후 최단 {df['trimmed_min'].min():.0f}분), 이 전수 변환도 "
+        "552건 전부를 처리한다. `crop_missing_frac` 열(크롭 창의 잔여 >"
+        f"{LONG_GAP_S}초 결측 비율)은 코호트 선별 기준이 아니라 신호 품질 기술 통계다.",
         "",
         "## 전처리 통계 (552건)",
         "",
@@ -171,14 +169,13 @@ def write_summary(df: pd.DataFrame, labels: dict, dt: float, n_inputs: int) -> s
 def main():
     t0 = time.time()
     ids = list_record_ids(DATA)
-    rows, inputs, input_ids, usable = [], [], [], []
+    rows, inputs, input_ids = [], [], []
     for i, rid in enumerate(ids, 1):
         row, x = process_record(rid)
         rows.append(row)
         if x is not None:
             inputs.append(x)
             input_ids.append(rid)
-            usable.append(row["crop_usable"])
         if i % 100 == 0 or i == len(ids):
             print(f"{i}/{len(ids)} ({time.time() - t0:.0f}초)", flush=True)
     dt = time.time() - t0
@@ -191,15 +188,15 @@ def main():
 
     cols = (["record_id", "pH", "Apgar1", "label_ph", "label_apgar", "label_lor",
              "raw_min", "trimmed_min", "missing_frac", "n_gaps", "n_long_gaps",
-             "longest_gap_s", "crop_ok", "crop_missing_frac", "crop_usable"]
+             "longest_gap_s", "crop_ok", "crop_missing_frac"]
             + FEATURE_NAMES)
     df[cols].to_csv(LOG / "ctu_features17.csv", index=False)
 
-    # 모델 입력은 552건 전부를 저장하고, 논문 코호트(496건)는 usable 마스크로 표시한다.
+    # 모델 입력은 552건 전부를 저장한다 — 논문도 552건 전부를 90%/10%로 나눠 썼다
+    # (write_summary의 설명 참조). 신호 품질은 CSV의 crop_missing_frac으로 확인한다.
     X = np.stack(inputs).astype(np.float32)
     np.savez_compressed(LOG / "ctu_model_inputs.npz",
                         record_ids=np.array(input_ids), X=X,
-                        usable=np.array(usable, dtype=bool),
                         channels=np.array(["FHR", "UC"]),
                         metadata_attrs=np.array(METADATA_ATTRS))
 

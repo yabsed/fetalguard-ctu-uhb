@@ -97,7 +97,7 @@ from features import (
     detect_decelerations, estimate_baseline, extract_features,
     preprocess_for_features,
 )
-from run_all import DATA, MAX_CROP_MISSING, MAX_CROP_MISSING_TXT
+from run_all import DATA
 
 try:
     fm.findfont("NanumGothic", fallback_to_default=False)
@@ -273,9 +273,12 @@ md("""
 1. 마지막 30분을 **제외한** 앞부분에서 슬라이딩 창 (사전학습·증강용)
 2. 기록 전체에서 무작위 30분 창
 
-이 데이터셋의 원신호는 전부 60분 이상이라 길이 때문에 탈락하는 레코드는 없다. 논문이
-보고한 분석 대상 496건은 신호 **품질** 기준의 결과로 보이며, 크롭 창의 잔여 결측이
-1/3 이하인 레코드만 남기면 정확히 496건이 된다(`run_all.py`, `log/summary.md`).
+이 데이터셋의 원신호는 전부 60분 이상이라 길이 때문에 탈락하는 레코드는 없다 — 마지막
+30분 크롭은 552건 모두 가능하다. 논문 전처리 절의 (n = 496)·(n = 56)은 분석 제외가
+아니라 **90%/10% 학습·테스트 분할**이다: Data splitting 절이 "10%를 held-out 테스트로
+고정하고 나머지 90%를 10-fold 교차검증에 썼다"고 명시하고, 산술도 맞물린다 —
+496 + 56 = 552, 학습 148,800분 = 496건 × 증강 크롭 10개 × 30분, 테스트 1,680분 =
+56건 × 결정론적 크롭 1개(`log/summary.md`의 설명 참조).
 """)
 
 code("""
@@ -284,9 +287,7 @@ uc_c = crop_last_minutes(uc_p, fs=FS)
 crop_miss = float((crop_last_minutes(fhr_i, fs=FS) == 0).mean())
 slides = sliding_crops_excluding_last(fhr_p)
 rnd = random_crop(fhr_p, np.random.default_rng(0))
-print(f"마지막 {CROP_MIN}분 크롭: {len(fhr_c):,}샘플 · 잔여 결측 {crop_miss:.1%} "
-      f"→ {'분석 대상' if crop_miss <= MAX_CROP_MISSING else '제외'} "
-      f"(기준 ≤{MAX_CROP_MISSING_TXT})")
+print(f"마지막 {CROP_MIN}분 크롭: {len(fhr_c):,}샘플 · 잔여 결측 {crop_miss:.1%}")
 print(f"대안 구간 (1) 슬라이딩 창 {len(slides)}개, (2) 무작위 창 1개")
 
 t_p = np.arange(len(fhr_p)) / FS / 60
@@ -570,9 +571,11 @@ md("""
 ## 9. CTG-net — 구조와 순전파
 
 Ogasawara et al. (2021)의 CTG-net을 Chiou et al.이 변형해 썼다. 30초-bin 시간 합성곱 →
-depthwise 합성곱(FHR-UC 관계) → separable 합성곱 → dense(sigmoid)로, 파라미터가 수천 개
-수준인 작은 모델이다. 논문은 필터 수를 아키텍처 탐색(무작위 500개 구성)으로 정했고 커널·풀
-크기를 공개하지 않아 기본값은 **[재구현 선택]**이다.
+depthwise 합성곱(FHR-UC 관계) → separable 합성곱 → flatten → 완전연결층 → sigmoid로,
+파라미터가 수천 개 수준인 작은 모델이다. 논문은 필터 수와 완전연결 은닉층의 수·차원을
+아키텍처 탐색(무작위 500개 구성)으로 정했으나 선택된 구성과 커널·풀 크기를 공개하지 않아,
+기본값(필터 4개·은닉층 없음)은 **[재구현 선택]**이다 — 은닉층은 `hidden_dims` 인자로
+지원한다.
 
 학습과 성능 수치는 이 저장소의 범위 밖이다 — 3.3절의 목적은 선행 연구 결과의 정확한
 전달이며, 공개하는 것은 재구현 코드까지다. 여기서는 **구조가 논문 명세와 맞물리는지**
@@ -632,10 +635,8 @@ print(f"특성 17개 일치 — {len(csv)}건 × 17개 중 레코드 {RID}의 �
 npz = np.load(Path("log") / "ctu_model_inputs.npz")
 i = int(np.where(npz["record_ids"] == RID)[0][0])
 assert np.allclose(npz["X"][i], x), "배치 NPZ와 모델 입력 불일치"
-print(f"모델 입력 일치 — NPZ {npz['X'].shape} 중 {i}번째 "
-      f"(분석 대상 표시 usable={bool(npz['usable'][i])})")
-print(f"\\n배치 산출물 규모: 특성 CSV {len(csv)}행 · "
-      f"모델 입력 {npz['X'].shape} · 분석 대상 {int(npz['usable'].sum())}건")
+print(f"모델 입력 일치 — NPZ {npz['X'].shape} 중 {i}번째")
+print(f"\\n배치 산출물 규모: 특성 CSV {len(csv)}행 · 모델 입력 {npz['X'].shape}")
 """)
 
 md("""
@@ -656,8 +657,8 @@ md("""
   명시된 값이다.
 - 프리프린트에도 없어 **[재구현 선택]**으로 남긴 지점: UC 피크 탐지 파라미터와 경계
   산정, 기저선 초기 10분 창의 위치, 변이도 극점 산정, '최근접 수축'의 거리 척도,
-  국소 노이즈 분산, CTG-net의 커널·풀 크기. 각 선택은 코드 주석에 근거와 함께 적혀
-  있다.
+  국소 노이즈 분산, CTG-net의 커널·풀 크기와 필터 수·완전연결 은닉층 구성, max-abs
+  배율의 적용 단위(크롭). 각 선택은 코드 주석에 근거와 함께 적혀 있다.
 """)
 
 nb["cells"] = C

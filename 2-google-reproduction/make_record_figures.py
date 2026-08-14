@@ -41,7 +41,7 @@ from preprocess import (  # noqa: E402
     CROP_MIN, FS, LONG_GAP_S, crop_last_minutes, gap_runs, impute_short_gaps,
     make_model_input, preprocess_record, trim_edge_missing,
 )
-from run_all import DATA, MAX_CROP_MISSING, MAX_CROP_MISSING_TXT  # noqa: E402
+from run_all import DATA  # noqa: E402
 
 OUT = HERE / "figures" / "records"
 OUT.mkdir(parents=True, exist_ok=True)
@@ -146,11 +146,9 @@ def render_record(rid: str) -> None:
         ax_in.text(0.5, 0.5, f"{CROP_MIN}분 크롭 불가", ha="center", va="center",
                    transform=ax_in.transAxes)
 
-    usable = "분석 대상" if crop_miss <= MAX_CROP_MISSING else "제외 (결측 과다)"
     fig.suptitle(
         f"레코드 {rid} — pH {meta['pH']:.2f} · Apgar1 {meta['Apgar1']:.0f} · "
-        f"마지막 {CROP_MIN}분 결측 {crop_miss:.1%} → {usable} "
-        f"(기준 ≤{MAX_CROP_MISSING_TXT})", y=1.0, fontsize=11)
+        f"마지막 {CROP_MIN}분 결측 {crop_miss:.1%}", y=1.0, fontsize=11)
     for ax in axes:
         ax.grid(alpha=0.25)
         ax.spines[["top", "right"]].set_visible(False)

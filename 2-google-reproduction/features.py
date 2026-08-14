@@ -27,6 +27,10 @@ Appendix A.2가 명시하는 규칙 (전부 프리프린트 원문 기준):
 
 논문이 공개하지 않은 세부(UC 피크 탐지 파라미터, 기저선 초기 창의 위치,
 변이도 극점 산정, '최근접 UC'의 거리 척도)만 [재구현 선택]으로 표기한다.
+
+[재구현 선택] 지속시간 경계의 이산화: "more than 15 seconds" 등의 임계값에서
+정확히 경계값(4 Hz에서 60표본)인 런의 귀속은 관례의 문제다 — 여기서는 경계값을
+포함(≥)한다. 아래 임계 상수들의 비교 연산이 그 관례를 따른다.
 """
 
 import numpy as np
@@ -262,6 +266,11 @@ def preprocess_for_features(fhr, uc, fs=FS):
     있는 신호의 rolling mean으로 구현한다(`preprocess.smooth_masked`) — 유효 표본만
     평균하므로, 아직 0으로 남아 있는 긴 결측이 평균에 섞여 경계를 오염시키거나
     계곡으로 바뀌어 마지막 보간 단계가 결측을 놓치는 일이 없다.
+
+    [재구현 선택] A.1의 품질 평가(5분 창 결측 ≥50% → 0 재지정)는 적용하지 않는다.
+    A.2는 "up to and including the imputation of missing values"의 단계를 따른다고
+    쓰지만, 곧이어 남은 긴 결측까지 전부 선형 보간하므로 0 재지정과 양립하지
+    않는다 — 최종 신호에 0이 남지 않는 A.2의 서술을 우선했다.
     """
     fhr = impute_short_gaps(fhr, int(15 * fs))
     uc = impute_short_gaps(uc, int(15 * fs))

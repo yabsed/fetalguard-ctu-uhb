@@ -61,7 +61,12 @@ def trim_edge_missing(fhr, uc):
 
 
 def impute_short_gaps(x, max_gap_samples):
-    """2단계: max_gap_samples 이하의 0-런을 선형 보간. 더 긴 런은 0 유지."""
+    """3단계: max_gap_samples 이하의 0-런을 선형 보간. 더 긴 런은 0 유지.
+
+    [재구현 선택] 논문은 "shorter than 15 seconds"를 보간한다고 쓴다 — 정확히
+    15초(4 Hz에서 60표본)인 런의 귀속은 이산화 관례의 문제로, 여기서는 보간에
+    포함한다(≤).
+    """
     x = x.copy()
     for s, e in gap_runs(x == 0):
         if e - s > max_gap_samples:
@@ -180,8 +185,9 @@ def preprocess_record(fhr, uc, fs=FS, smooth_window=SMOOTH_WINDOW):
 def crop_last_minutes(x, minutes=CROP_MIN, fs=FS, end_offset_min=0):
     """기록 끝에서 end_offset_min만큼 물러난 지점 기준 minutes 길이 크롭.
 
-    길이가 부족하면 None 반환 (호출부에서 해당 레코드 제외 — 논문도 552건 중
-    496건으로 줄어든 것을 보고한다).
+    길이가 부족하면 None 반환. CTU-UHB에서는 발생하지 않는다 — 원신호가 전부
+    60분 이상이라 마지막 30분 크롭은 552건 모두 가능하다. (논문의 496/56은
+    크롭 탈락이 아니라 90%/10% 학습·테스트 분할이다 — run_all.write_summary 참조.)
     """
     n = int(minutes * 60 * fs)
     end = len(x) - int(end_offset_min * 60 * fs)
@@ -215,14 +221,19 @@ def random_crop(x, rng, crop_min=CROP_MIN, fs=FS):
 # ---------------------------------------------------------------- 다운샘플·스케일
 
 def downsample_to_1hz(x, fs=FS):
-    """5단계: 1 Hz 다운샘플 (fs-포인트 블록 평균). 30분 크롭 → 1,800 포인트."""
+    """6단계: 1 Hz 다운샘플 (fs-포인트 블록 평균). 30분 크롭 → 1,800 포인트."""
     n = len(x) // fs * fs
     return x[:n].reshape(-1, fs).mean(axis=1).astype(np.float32)
 
 
 def maxabs_scale(fhr, uc):
-    """6단계: 채널별 최대절대값 스케일링 (논문: channel-specific maximum
-    absolute value scaling). 결측(0)을 포함한 크롭 전체 기준."""
+    """7단계: 채널별 최대절대값 스케일링 (논문: channel-specific maximum
+    absolute value scaling).
+
+    [재구현 선택] 논문은 "채널별"이라고만 명시하고 배율의 단위(데이터셋 전역 /
+    레코드 / 크롭)는 밝히지 않는다. 여기서는 크롭 하나를 그 크롭의 채널별
+    최대절대값(결측 0 포함)으로 나눈다 — 크롭마다 배율이 달라지므로 절대
+    심박수 수준은 크롭 간에 보존되지 않는다."""
     fhr_s = fhr / np.abs(fhr).max() if np.abs(fhr).max() > 0 else fhr
     uc_s = uc / np.abs(uc).max() if np.abs(uc).max() > 0 else uc
     return fhr_s.astype(np.float32), uc_s.astype(np.float32)
