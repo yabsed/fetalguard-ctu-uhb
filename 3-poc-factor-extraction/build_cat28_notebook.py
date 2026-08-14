@@ -64,7 +64,7 @@ import matplotlib.font_manager as fm
 sys.path.insert(0, str(Path.cwd()))
 from extract_factors_ctu import (
     BRADY, CAT28, DATA, FS, HIST_BINS, MAX_LAG, MAX_MISSING, SEG_N, TACHY,
-    extract_segment, read_signals, trim_edge_missing,
+    _corr, extract_segment, read_signals, trim_edge_missing,
 )
 from features import (   # A.2 규칙 구현 — 재현 실험과 같은 코드
     ACC_MIN_BPM, BASELINE_TOL, DEC_MIN_BPM, classify_deceleration,
@@ -131,10 +131,12 @@ plt.show()
 
 # ---------------------------------------------------------------- 2. 전처리
 md("""
-## 2. 1단계 — 전처리: 세그먼트 내 결측의 선형 보간
+## 2. 1단계 — 전처리: A.2 특성 전용 전처리
 
-사용 판정된 세그먼트의 남은 결측(≤30%)은 양 끝점을 잇는 **선형 보간**으로 채운다.
-이후 모든 인자는 이 보간 완료 신호에서 계산된다.
+사용 판정된 세그먼트에는 계획서 5.1 1단계(= A.2의 특성 전용 전처리)를 적용한다 —
+**15초 미만의 짧은 결측 선형 보간 → 30초 롤링 창 평활(유효 표본만 평균) → 남은 결측
+선형 보간**. 수축의 "종형 45~120초" 판정이 평활에 의존하므로, 이후 모든 인자는 이
+전처리 완료 신호에서 계산된다.
 """)
 
 code("""
@@ -144,11 +146,11 @@ seg_f, seg_t = preprocess_for_features(seg_raw_f, seg_raw_t, FS)
 t = np.arange(SEG_N) / FS / 60   # 세그먼트 내 시간 (분)
 
 fig, ax = plt.subplots(figsize=(13, 3.2))
-ax.plot(t, seg_f, lw=1.6, color=C_ACCEL, alpha=0.9, label="보간 후")
+ax.plot(t, seg_f, lw=1.6, color=C_ACCEL, alpha=0.9, label="전처리 후 (보간 + 30초 평활)")
 ax.plot(t, np.where(seg_raw_f == 0, np.nan, seg_raw_f), lw=0.9, color=C_FHR, label="원신호 (결측 = 끊김)")
 ax.set_xlabel("세그먼트 내 시간 (분)")
 ax.set_ylabel("FHR (bpm)")
-ax.set_title(f"세그먼트 #{SEG} — 결측률 {float((seg_raw_f == 0).mean()):.1%}, 초록 구간이 보간으로 채워진 부분")
+ax.set_title(f"세그먼트 #{SEG} — 결측률 {float((seg_raw_f == 0).mean()):.1%}, 초록이 전처리 완료 신호")
 ax.legend(frameon=False)
 ax.grid(alpha=0.25)
 plt.show()
@@ -302,23 +304,25 @@ plt.show()
 md("""
 ## 6. 양신호 결합 인자 — FHR-TOCO 시간차 상관
 
-두 신호를 표준화한 뒤 **동시 상관**(`ft_corr0`)과, FHR를 ±60초 범위에서 1초 간격으로
-밀며 구한 **최소 상관**(`ft_corr_min`)과 그 시간차(`ft_corr_min_lag_s`)를 계산한다.
+**동시 피어슨 상관**(`ft_corr0`)과, FHR를 ±60초 범위에서 1초 간격으로 밀며 겹치는
+구간마다 **다시 중심화·표준화하는 피어슨 상관**의 최솟값(`ft_corr_min`)과 그
+시간차(`ft_corr_min_lag_s`)를 계산한다 — 계획서 5.1이 명시한 정의 그대로이며, 전역
+표준화 후 곱 평균 방식(창마다 중심이 어긋나 상관을 0 쪽으로 누른다;
+`verify_design_choices.py` §3)이 아니다. 계산은 배치와 같은 `_corr`를 쓴다.
 lag가 양수면 FHR 하강이 수축에 **후행**한다는 뜻 — 이산적 감속 계수(조기/후기)가 버리는
 연속적 시간 관계를 보존하는, Cat28이 Chiou et al.의 17개에 추가한 인자다 (계획서 4.1절 ⑥).
 """)
 
 code("""
-fz = (seg_f - seg_f.mean()) / (seg_f.std() + 1e-9)
-tz = (seg_t - seg_t.mean()) / (seg_t.std() + 1e-9)
-lags, rs = [0], [float((fz * tz).mean())]
+# 배치와 동일한 _corr(겹치는 구간의 피어슨 상관)로 lag 곡선을 그린다
+lags, rs = [0], [_corr(seg_f, seg_t)]
 for lag in range(-MAX_LAG, MAX_LAG + 1, FS):
     if lag == 0:
         continue
-    a = fz[lag:] if lag > 0 else fz[:lag]
-    b = tz[:-lag] if lag > 0 else tz[-lag:]
+    a = seg_f[lag:] if lag > 0 else seg_f[:lag]
+    b = seg_t[:-lag] if lag > 0 else seg_t[-lag:]
     lags.append(lag)
-    rs.append(float((a * b).mean()))
+    rs.append(_corr(a, b))
 order = np.argsort(lags)
 lags_s = np.array(lags)[order] / FS
 rs = np.array(rs)[order]

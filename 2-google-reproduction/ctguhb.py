@@ -112,6 +112,11 @@ def make_labels(meta_df):
 
 
 def metadata_vector(meta_df, rid):
-    """논문의 메타데이터 입력 벡터 (11속성). 결측은 0으로 두고 스케일링은 학습 시 수행."""
+    """논문의 메타데이터 입력 벡터 (11속성). 결측은 0으로 두고 스케일링은 학습 시 수행.
+
+    [재구현 선택] 결측 처리는 논문에 없다. 0 대입은 Gravidity(결측 4건, 유효
+    최솟값 1)에서 정의역 밖 값을 만든다 — 학습 실험에서 다른 대입을 쓰려면
+    여기서 바꾼다.
+    """
     row = meta_df.loc[rid, METADATA_ATTRS].to_numpy(dtype=np.float64)
     return np.nan_to_num(row, nan=0.0).astype(np.float32)

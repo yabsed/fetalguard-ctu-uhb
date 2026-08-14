@@ -247,6 +247,7 @@ def extract_features(fhr, uc, fs=FS):
         feats["hist_width"] = feats["hist_max"] - feats["hist_min"]
         feats["hist_median"] = float(np.median(valid))
         feats["hist_mean"] = float(valid.mean())
+        # [재구현 선택] 히스토그램 구간 수 24는 논문에 없다 (최빈값 산출에만 영향)
         hist, edges = np.histogram(valid, bins=24)
         feats["hist_mode"] = float((edges[int(np.argmax(hist))] + edges[int(np.argmax(hist)) + 1]) / 2)
         feats["hist_std"] = float(valid.std())
@@ -294,6 +295,7 @@ def train_xgboost(X_train, y_train, X_val, y_val, seed=0, verbose=False):
     """논문 설정: 추정기 1,000개, 최대 깊이 2, 클래스 보정 가중 손실,
     조기중단 30라운드, 평가지표 AUROC.
 
+    [재구현 선택] 학습률 eta 0.1은 논문에 없다 (xgboost 관례값).
     xgboost.train API 사용 (1.6.x와 3.x 모두 호환).
     """
     import xgboost as xgb
