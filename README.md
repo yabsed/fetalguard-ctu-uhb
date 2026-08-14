@@ -89,7 +89,7 @@ Appendix A에 있으며, 재구현은 그 명세를 따른다.
 | `figures/records/` | 레코드별 판정 근거 시각화 552장 |
 | `reproduction_walkthrough.ipynb` | 샘플 1건(레코드 1001) 워크스루 (실행 완료) — 마지막 셀에서 배치 CSV·NPZ와 값 일치를 검증 |
 
-![전처리 파이프라인의 단계별 신호 변화(레코드 1001). 마지막 패널이 CNN에 입력되는 2×1,800 텐서다.](2-google-reproduction/figures/11_preprocessing.png)
+![전처리 파이프라인의 단계별 신호 변화(레코드 1142). 마지막 패널이 CNN에 입력되는 2×1,800 텐서다.](2-google-reproduction/figures/11_preprocessing.png)
 
 숫자 하나를 분명히 해 둔다. 논문 전처리 절의 (n = 496)·(n = 56)은 분석에서 제외된
 레코드가 있다는 뜻이 아니라 **90%/10% 학습·테스트 분할**이다 — Data splitting 절이

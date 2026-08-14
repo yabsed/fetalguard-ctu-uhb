@@ -1,6 +1,12 @@
 """계획서 3.3절 그림 — Chiou et al. (2025) 전처리 재구현의 단계별 시각화.
 
-  figures/11_preprocessing.png — 레코드 1001의 전처리 4단계 (계획서 그림 3-3-1)
+  figures/11_preprocessing.png — 레코드 1142의 전처리 4단계 (계획서 그림 3-3-1)
+
+레코드 선택 근거: 1142는 크롭 창의 FHR 결측이 6%(UC는 0%)로, 짧은 결측의
+보간·평활과 긴 결측의 0 표지 보존이 모두 보이면서 최종 CNN 입력의 두 채널이
+대부분 유효 신호다. 워크스루가 해부하는 레코드 1001은 마지막 30분 결측이 33%라
+최종 입력의 1/3이 0으로 채워져, 파이프라인 단계별 동작을 보이는 그림의 목적에
+맞지 않는다.
 
 실행: cd 2-google-reproduction && python make_figures.py
 """
@@ -30,7 +36,7 @@ DATA_DIR = next(p for p in HERE.resolve().parents
                 if (p / "ctu-hub-ctgdb").exists()) / "ctu-hub-ctgdb"
 
 
-def fig_preprocessing(rid="1001"):
+def fig_preprocessing(rid="1142"):
     """원신호 → 정제 → 마지막 30분 크롭 → 1 Hz 모델 입력의 4단계."""
     fhr_raw, uc_raw, meta, fs = read_signals(DATA_DIR / f"{rid}.hea")
     fhr_p, uc_p = preprocess_record(fhr_raw, uc_raw)

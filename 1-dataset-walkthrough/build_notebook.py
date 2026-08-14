@@ -522,31 +522,40 @@ plt.show()
 """)
 
 md("""
-마지막으로, 두 개의 대표 사례를 나란히 놓는다: 지금까지 뜯어본 **비정상 레코드 1001**(pH 7.14, Apgar 6)과,
-기준을 모두 여유 있게 통과한 **정상 레코드**의 분만 직전 30분. 구글 논문 Fig. 3c의 대응 그림이다.
+마지막으로, 정상/비정상 대표 사례의 분만 직전 30분을 나란히 놓는다 — 구글 논문 Fig. 3c의
+대응 그림이다. 지금까지 뜯어본 레코드 1001은 두 기준 모두 비정상이지만 **마지막 30분의
+결측이 3분의 1을 넘어**(아래 셀에서 실측) 파형 대비용으로는 적합하지 않다. 대신 분만
+직전 30분의 결측이 적은 대표 사례 둘을 쓴다 — **비정상 1495**(pH 7.03, Apgar1 4, 두 기준
+모두 비정상, 결측 2%)과 **정상 1503**(pH 7.31, Apgar1 9, 결측 0%). 이 데이터셋은 모든
+기록의 끝이 분만 시점이므로(552건 전부 `Sig2Birth` = 0), 시간축은 분만 전 시간으로
+정렬한다.
 """)
 
 code("""
-normal_id = df[(df["pH"] >= 7.30) & (df["Apgar1"] >= 8)].index[0]
-fig, axes = plt.subplots(2, 1, figsize=(14, 6), sharex=True)
-for ax, name, color in [(axes[0], rid, "tab:red"), (axes[1], normal_id, "tab:green")]:
+def last30(name):
     r, m, s = read_signals(DATA_DIR / f"{name}.hea")
-    fs = r["fs"]
-    f = np.where(s["FHR"] == 0, np.nan, s["FHR"])
-    t = np.arange(r["n_samples"]) / fs / 60
-    last30 = t >= t[-1] - 30
-    ax.plot(t[last30], f[last30], lw=0.8, color=color)
+    return s["FHR"][-int(30 * 60 * r["fs"]):], m, r["fs"]
+
+for name in [rid, "1495", "1503"]:
+    f, m, _ = last30(name)
+    print(f"레코드 {name}: 마지막 30분 결측 {(f == 0).mean():5.1%} "
+          f"(pH {m['pH']:.2f}, Apgar1 {m['Apgar1']:.0f})")
+
+fig, axes = plt.subplots(2, 1, figsize=(14, 6), sharex=True)
+for ax, name, color, tag in [(axes[0], "1495", "tab:red", "비정상"),
+                             (axes[1], "1503", "tab:green", "정상")]:
+    f, m, fs = last30(name)
+    t = np.arange(len(f)) / fs / 60 - 30      # 분만 전 시간 (분): −30 → 0
+    ax.plot(t, np.where(f == 0, np.nan, f), lw=0.8, color=color)
     ax.set_ylabel("FHR (bpm)")
     ax.set_ylim(40, 220)
     ax.grid(alpha=0.3)
     ax.set_title(f"레코드 {name} — 분만 전 마지막 30분 "
-                 f"(pH {m['pH']:.2f}, Apgar1 {m['Apgar1']:.0f} → "
-                 f"{'비정상' if (m['pH'] < 7.2 or m['Apgar1'] < 7) else '정상'})")
-axes[1].set_xlabel("기록 시작 후 시간 (분)")
+                 f"(pH {m['pH']:.2f}, Apgar1 {m['Apgar1']:.0f} → {tag})")
+axes[1].set_xlabel("분만 전 시간 (분)")
 fig.tight_layout()
 fig.savefig(FIG_DIR / "07_normal_vs_abnormal.png", dpi=120, bbox_inches="tight")
 plt.show()
-print(f"대조 정상 레코드: {normal_id}")
 """)
 
 md("""
