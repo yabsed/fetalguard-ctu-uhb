@@ -1,0 +1,13 @@
+# 핵심 (모든 스크립트·노트북)
+numpy
+pandas
+scipy
+matplotlib
+
+# 노트북 생성·실행
+nbformat
+jupyter
+
+# 선택 — 직접 학습을 돌릴 때만 필요 (이 저장소의 산출물 재현에는 불필요)
+# xgboost   # features.py의 train_xgboost
+# torch     # model.py의 CTG-net
